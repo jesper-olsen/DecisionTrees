@@ -1,7 +1,8 @@
 import csv
+import argparse
 from collections import Counter
 from math import log2
-import argparse
+from graphviz import Digraph
 
 
 class DecisionNode:
@@ -29,10 +30,10 @@ class DecisionNode:
                 decision = f"{szCol} == {self.value}?"
 
             trueBranchStr = (
-                indent + "yes -> " + self.trueBranch.__str__(headings, indent + "\t\t")
+                indent + "yes -> " + self.trueBranch.__str__(headings, indent + "    ")
             )
             falseBranchStr = (
-                indent + "no  -> " + self.falseBranch.__str__(headings, indent + "\t\t")
+                indent + "no  -> " + self.falseBranch.__str__(headings, indent + "    ")
             )
             return decision + "\n" + trueBranchStr + "\n" + falseBranchStr
 
@@ -68,10 +69,7 @@ def entropy(rows):
     if not rows:
         return 0.0
     total = len(rows)
-    return -sum(
-        (count / total) * log2(count / len(rows))
-        for count in uniqueCounts(rows).values()
-    )
+    return -sum((count / total) * log2(count / total) for count in uniqueCounts(rows).values())
 
 
 def gini(rows):
@@ -84,14 +82,14 @@ def gini(rows):
     return 1.0 - sum((count / total) ** 2 for count in uniqueCounts(rows).values())
 
 
-def variance(rows):
-    if not rows:
-        return 0.0
-    total = len(rows)
-    data = [row[-1] for row in rows]
-    mean = sum(data) / total
-    variance = sum([(d - mean) ** 2 for d in data]) / total
-    return variance
+# def variance(rows):
+#     if not rows:
+#         return 0.0
+#     total = len(rows)
+#     data = [row[-1] for row in rows]
+#     mean = sum(data) / total
+#     variance = sum([(d - mean) ** 2 for d in data]) / total
+#     return variance
 
 
 def growDecisionTreeFrom(rows, evaluationFunction=entropy):
@@ -203,7 +201,7 @@ def classify(observations, tree, dataMissing=False):
                 tw = tcount / (tcount + fcount)
                 fw = fcount / (tcount + fcount)
                 keys = tr.keys() | fr.keys()
-                return {k: tr.get(k, 0) * tw + fr.get(k, 0) * fw for k in keys}
+                return Counter({k: tr.get(k, 0) * tw + fr.get(k, 0) * fw for k in keys})
             else:
                 branch = None
                 if isinstance(v, int) or isinstance(v, float):
@@ -224,6 +222,30 @@ def classify(observations, tree, dataMissing=False):
     else:
         return classifyWithoutMissingData(observations, tree)
 
+def print_classification_result(sample, result):
+    """Prints a formatted and human-readable classification result."""
+    if not result:
+        print(f"Could not classify sample: {sample}")
+        return
+
+    # Determine the final prediction by finding the class with the highest score
+    prediction = max(result, key=result.get)
+
+    # Sort the results by score (descending) for deterministic and clear output
+    sorted_results = sorted(result.items(), key=lambda item: item[1], reverse=True)
+
+    print("-" * 40)
+    print(f"Input Sample: {sample}")
+    print(f"--> Predicted Class: '{prediction}'")
+    print("\nDetailed Scores (Leaf Node Counts / Weights):")
+    for class_name, score in sorted_results:
+        if isinstance(score, float):
+            # For missing data, these are weighted counts
+            print(f"    - {class_name:<12}: {score:.4f}")
+        else:
+            # For complete data, these are direct sample counts
+            print(f"    - {class_name:<12}: {score}")
+    print("-" * 40)
 
 def loadCSV(file):
     """Loads a CSV file and converts all floats and ints into basic datatypes."""
@@ -235,8 +257,35 @@ def loadCSV(file):
         except ValueError:
             return s
 
-    reader = csv.reader(open(file, "rt"))
-    return [[convertTypes(item) for item in row] for row in reader]
+    with open(file, "rt") as f:
+        reader = csv.reader(f)
+        return [[convertTypes(item) for item in row] for row in reader]
+
+
+def export_tree(tree, dot=None):
+    """Recursively export a decision tree to Graphviz DOT format."""
+    if dot is None:
+        dot = Digraph()
+
+    if tree.results is not None:
+        # Leaf node
+        label = ", ".join(f"{k}:{v}" for k, v in tree.results.items())
+        dot.node(str(id(tree)), label, shape="box", style="filled", color="lightgrey")
+    else:
+        # Decision node
+        if isinstance(tree.value, (int, float)):
+            label = f"Column {tree.col} >= {tree.value}"
+        else:
+            label = f"Column {tree.col} == {tree.value}"
+        dot.node(str(id(tree)), label, shape="ellipse")
+
+        # Recurse
+        dot.edge(str(id(tree)), str(id(tree.trueBranch)), label="yes")
+        export_tree(tree.trueBranch, dot)
+        dot.edge(str(id(tree)), str(id(tree.falseBranch)), label="no")
+        export_tree(tree.falseBranch, dot)
+
+    return dot
 
 
 if __name__ == "__main__":
@@ -253,6 +302,11 @@ if __name__ == "__main__":
         default="entropy",
         help="Evaluation function to use for splits (default: entropy)",
     )
+    parser.add_argument(
+        "--plot",
+        metavar="FILE",
+        help="Export the decision tree as a Graphviz image (e.g. tree.png or tree.svg)",
+    )
     args = parser.parse_args()
 
     eval_fn = entropy if args.criterion == "entropy" else gini
@@ -266,28 +320,25 @@ if __name__ == "__main__":
     #     (7.) Prune the decision tree according to a minimal gain level
     #     (8.) Plot the pruned tree
 
+    decisionTree=None
     if args.example == 1:
-        # the smaller examples
+        # the smaller example
         trainingData = loadCSV(
             "tbc.csv"
         )  # sorry for not translating the TBC and pneumonia symptoms
         decisionTree = growDecisionTreeFrom(trainingData, evaluationFunction=eval_fn)
         print(decisionTree)
 
-        print(
-            classify(
-                ["ohne", "leicht", "Streifen", "normal", "normal"],
-                decisionTree,
-                dataMissing=False,
-            )
-        )
-        print(
-            classify(
-                [None, "leicht", None, "Flocken", "fiepend"],
-                decisionTree,
-                dataMissing=True,
-            )
-        )  # no longer unique
+        print("\n--- Classification Examples ---")
+
+        # Example 1: A sample with complete data
+        complete_sample = ["ohne", "leicht", "Streifen", "normal", "normal"]
+        result1 = classify(complete_sample, decisionTree, dataMissing=False)
+        print_classification_result(complete_sample, result1)
+
+        missing_sample = [None, "leicht", None, "Flocken", "fiepend"]
+        result1 = classify(missing_sample, decisionTree, dataMissing=True) 
+        print_classification_result(missing_sample, result2)  # no longer unique
         # Don't forget if you compare the resulting tree with the tree in my presentation: here it is a binary tree!
     else:
         # the bigger example
@@ -295,14 +346,26 @@ if __name__ == "__main__":
         decisionTree = growDecisionTreeFrom(trainingData)
         print(decisionTree)
 
-        prune(
-            decisionTree, 0.5, notify=True
-        )  # notify, when a branch is pruned (one time in this example)
+        # notify, when a branch is pruned (one time in this example)
+        prune(decisionTree, 0.5, evaluationFunction=eval_fn, notify=True)
         print(decisionTree)
 
-        print(
-            classify([6.0, 2.2, 5.0, 1.5], decisionTree)
-        )  # dataMissing=False is the default setting
-        print(
-            classify([None, None, None, 1.5], decisionTree, dataMissing=True)
-        )  # no longer unique
+        print("\n--- Classification Examples ---")
+
+        # Example 1: A sample with complete data
+        complete_sample = [6.0, 2.2, 5.0, 1.5]
+        result1 = classify(complete_sample, decisionTree, dataMissing=False)
+        print_classification_result(complete_sample, result1)
+        
+        # Example 2: A sample with missing data
+        missing_sample = [None, None, None, 1.5]
+        result2 = classify(missing_sample, decisionTree, dataMissing=True)
+        print_classification_result(missing_sample, result2) # no longer unique
+
+    if args.plot:
+        # Remove extension if present
+        filename = args.plot.rsplit(".", 1)[0]
+        fileformat = args.plot.rsplit(".", 1)[-1]
+        dot = export_tree(decisionTree)
+        dot.render(filename, format=fileformat, cleanup=True)
+        print(f"Decision tree exported to {filename}.{fileformat}")
