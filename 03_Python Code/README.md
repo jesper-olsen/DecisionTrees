@@ -23,22 +23,16 @@ This project requires **Graphviz** to be installed on your system to render the 
 
 ## Installation
 
-1.  Create a virtual environment and install the required Python packages from `requirements.txt`.
+Create a virtual environment and install the required Python packages from `requirements.txt`:
 
     ```bash
-    # Create the virtual environment
     uv venv
-
-    # Activate the environment (optional, as `uv run` handles it)
-    # source .venv/bin/activate
-
-    # Install Python dependencies
     uv pip install -r requirements.txt
     ```
 
 ## Usage
 
-Run the script from your terminal, specifying the dataset and desired options.
+Run the script from your terminal, specifying the dataset and the desired options:
 
 ``` bash
 uv run decision_tree.py 2 --criterion entropy --plot tree_iris.png
