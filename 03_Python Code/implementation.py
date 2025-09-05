@@ -1,5 +1,6 @@
 import csv 
 import collections
+import argparse
 
 class DecisionNode:
     def __init__(self, col=None, value=None, results=None, trueBranch=None, falseBranch=None):
@@ -205,9 +206,14 @@ def loadCSV(file):
 
 
 if __name__ == '__main__':
-
-    # Select the example you want to classify
-    example = 1
+    parser = argparse.ArgumentParser(description="Decision tree demo")
+    parser.add_argument(
+        "example",
+        type=int,
+        choices=[1, 2],
+        help="Which example to run: 1=small dataset (tbc), 2=larger dataset (fishiris)",
+    )
+    args = parser.parse_args()
 
     # All examples do the following steps:
     #     1. Load training data
@@ -218,7 +224,7 @@ if __name__ == '__main__':
     #     (7.) Prune the decision tree according to a minimal gain level
     #     (8.) Plot the pruned tree
 
-    if example == 1:
+    if args.example == 1:
         # the smaller examples
         trainingData = loadCSV('tbc.csv') # sorry for not translating the TBC and pneumonia symptoms
         decisionTree = growDecisionTreeFrom(trainingData)
