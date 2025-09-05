@@ -10,21 +10,21 @@ class DecisionNode:
         self,
         col=None,
         value=None,
-        results=None,
+        class_counts=None,
         trueBranch=None,
         falseBranch=None,
         summary=None,
     ):
         self.col = col
         self.value = value
-        self.results = results  # None for nodes, not None for leaves
+        self.class_counts = class_counts  # only for leaves; None for internal nodes
         self.trueBranch = trueBranch
         self.falseBranch = falseBranch
         self.summary = summary
 
     def __str__(self, headings=None, indent=""):
-        if self.results is not None:  # Leaf
-            lsX = sorted(self.results.items())
+        if self.class_counts:  # Leaf
+            lsX = sorted(self.class_counts.items())
             return ", ".join(f"{x}: {y}" for x, y in lsX)
         else:
             szCol = f"Column {self.col}"
@@ -145,24 +145,24 @@ def growDecisionTreeFrom(rows, evaluationFunction=entropy):
             summary=summary,
         )
     else:
-        return DecisionNode(results=uniqueCounts(rows), summary=summary)
+        return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
 
 
 def prune(tree, minGain, evaluationFunction=entropy, notify=False):
     """Prunes the obtained tree according to the minimal gain (entropy or Gini)."""
     # recursive call for each branch
-    if tree.trueBranch.results == None:
+    if not tree.trueBranch.class_counts:
         prune(tree.trueBranch, minGain, evaluationFunction, notify)
-    if tree.falseBranch.results == None:
+    if not tree.falseBranch.class_counts:
         prune(tree.falseBranch, minGain, evaluationFunction, notify)
 
     # merge leaves (potentionally)
-    if tree.trueBranch.results != None and tree.falseBranch.results != None:
+    if tree.trueBranch.class_counts and tree.falseBranch.class_counts:
         tb, fb = [], []
 
-        for v, c in tree.trueBranch.results.items():
+        for v, c in tree.trueBranch.class_counts.items():
             tb += [[v]] * c
-        for v, c in tree.falseBranch.results.items():
+        for v, c in tree.falseBranch.class_counts.items():
             fb += [[v]] * c
 
         p = len(tb) / len(tb + fb)
@@ -175,7 +175,7 @@ def prune(tree, minGain, evaluationFunction=entropy, notify=False):
             if notify:
                 print("A branch was pruned: gain = %f" % delta)
             tree.trueBranch, tree.falseBranch = None, None
-            tree.results = uniqueCounts(tb + fb)
+            tree.class_counts = uniqueCounts(tb + fb)
 
 
 def classify(observations, tree, dataMissing=False):
@@ -183,8 +183,8 @@ def classify(observations, tree, dataMissing=False):
     dataMissing: true or false if data are missing or not."""
 
     def classifyWithoutMissingData(observations, tree):
-        if tree.results != None:  # leaf
-            return tree.results
+        if tree.class_counts:  # leaf
+            return tree.class_counts
         else:
             v = observations[tree.col]
             branch = None
@@ -201,8 +201,8 @@ def classify(observations, tree, dataMissing=False):
         return classifyWithoutMissingData(observations, branch)
 
     def classifyWithMissingData(observations, tree):
-        if tree.results != None:  # leaf
-            return tree.results
+        if tree.class_counts:  # leaf
+            return tree.class_counts
         else:
             v = observations[tree.col]
             if v == None:
@@ -287,10 +287,9 @@ def export_tree(tree, header, dot=None):
     # Use a unique ID for each node
     node_id = str(id(tree))
 
-    if tree.results is not None:
-        # Leaf node
+    if tree.class_counts:  # Leaf node
         # Create a label with class counts, impurity, and total samples
-        class_counts = "<BR/>".join(f"{k}: {v}" for k, v in tree.results.items())
+        class_counts = "<BR/>".join(f"{k}: {v}" for k, v in tree.class_counts.items())
         label = f"""<
 <B>Leaf</B><BR/>
 {class_counts}<BR/>
