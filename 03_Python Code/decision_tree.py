@@ -7,13 +7,20 @@ from graphviz import Digraph
 
 class DecisionNode:
     def __init__(
-        self, col=None, value=None, results=None, trueBranch=None, falseBranch=None
+        self,
+        col=None,
+        value=None,
+        results=None,
+        trueBranch=None,
+        falseBranch=None,
+        summary=None,
     ):
         self.col = col
         self.value = value
         self.results = results  # None for nodes, not None for leaves
         self.trueBranch = trueBranch
         self.falseBranch = falseBranch
+        self.summary = summary
 
     def __str__(self, headings=None, indent=""):
         if self.results is not None:  # Leaf
@@ -69,7 +76,9 @@ def entropy(rows):
     if not rows:
         return 0.0
     total = len(rows)
-    return -sum((count / total) * log2(count / total) for count in uniqueCounts(rows).values())
+    return -sum(
+        (count / total) * log2(count / total) for count in uniqueCounts(rows).values()
+    )
 
 
 def gini(rows):
@@ -123,6 +132,8 @@ def growDecisionTreeFrom(rows, evaluationFunction=entropy):
                 bestAttribute = (col, value)
                 bestSets = (set1, set2)
 
+    summary = {"impurity": currentScore, "samples": len(rows)}
+
     if bestGain > 0:
         trueBranch = growDecisionTreeFrom(bestSets[0], evaluationFunction)
         falseBranch = growDecisionTreeFrom(bestSets[1], evaluationFunction)
@@ -131,9 +142,10 @@ def growDecisionTreeFrom(rows, evaluationFunction=entropy):
             value=bestAttribute[1],
             trueBranch=trueBranch,
             falseBranch=falseBranch,
+            summary=summary,
         )
     else:
-        return DecisionNode(results=uniqueCounts(rows))
+        return DecisionNode(results=uniqueCounts(rows), summary=summary)
 
 
 def prune(tree, minGain, evaluationFunction=entropy, notify=False):
@@ -222,6 +234,7 @@ def classify(observations, tree, dataMissing=False):
     else:
         return classifyWithoutMissingData(observations, tree)
 
+
 def print_classification_result(sample, result):
     """Prints a formatted and human-readable classification result."""
     if not result:
@@ -247,8 +260,9 @@ def print_classification_result(sample, result):
             print(f"    - {class_name:<12}: {score}")
     print("-" * 40)
 
+
 def loadCSV(file):
-    """Loads a CSV file and converts all floats and ints into basic datatypes."""
+    """Loads a CSV file, reads the header, and converts data types."""
 
     def convertTypes(s):
         s = s.strip()
@@ -259,31 +273,52 @@ def loadCSV(file):
 
     with open(file, "rt") as f:
         reader = csv.reader(f)
-        return [[convertTypes(item) for item in row] for row in reader]
+        header = next(reader)  # Read the first line as the header
+        data = [[convertTypes(item) for item in row] for row in reader]
+        return header, data
 
 
-def export_tree(tree, dot=None):
-    """Recursively export a decision tree to Graphviz DOT format."""
+def export_tree(tree, header, dot=None):
+    """Recursively export a decision tree to Graphviz DOT format with rich labels."""
     if dot is None:
         dot = Digraph()
+        dot.attr("node", shape="box", style="filled, rounded")  # Set default node style
+
+    # Use a unique ID for each node
+    node_id = str(id(tree))
 
     if tree.results is not None:
         # Leaf node
-        label = ", ".join(f"{k}:{v}" for k, v in tree.results.items())
-        dot.node(str(id(tree)), label, shape="box", style="filled", color="lightgrey")
+        # Create a label with class counts, impurity, and total samples
+        class_counts = "<BR/>".join(f"{k}: {v}" for k, v in tree.results.items())
+        label = f"""<
+<B>Leaf</B><BR/>
+{class_counts}<BR/>
+impurity = {tree.summary['impurity']:.3f}<BR/>
+samples = {tree.summary['samples']}
+>"""
+        dot.node(node_id, label, fillcolor="#e58139aa")  # Use a leaf color
     else:
         # Decision node
+        column_name = header[tree.col]
         if isinstance(tree.value, (int, float)):
-            label = f"Column {tree.col} >= {tree.value}"
+            condition = f"{column_name} &ge; {tree.value}"
         else:
-            label = f"Column {tree.col} == {tree.value}"
-        dot.node(str(id(tree)), label, shape="ellipse")
+            condition = f"{column_name} == {tree.value}"
 
-        # Recurse
-        dot.edge(str(id(tree)), str(id(tree.trueBranch)), label="yes")
-        export_tree(tree.trueBranch, dot)
-        dot.edge(str(id(tree)), str(id(tree.falseBranch)), label="no")
-        export_tree(tree.falseBranch, dot)
+        # Create a label with the condition, impurity, and sample count
+        label = f"""<
+<B>{condition}</B><BR/>
+impurity = {tree.summary['impurity']:.3f}<BR/>
+samples = {tree.summary['samples']}
+>"""
+        dot.node(node_id, label, fillcolor="#399de5aa")  # Use a node color
+
+        # Recurse for children
+        dot.edge(node_id, str(id(tree.trueBranch)), label="True")
+        export_tree(tree.trueBranch, header, dot)
+        dot.edge(node_id, str(id(tree.falseBranch)), label="False")
+        export_tree(tree.falseBranch, header, dot)
 
     return dot
 
@@ -320,10 +355,13 @@ if __name__ == "__main__":
     #     (7.) Prune the decision tree according to a minimal gain level
     #     (8.) Plot the pruned tree
 
-    decisionTree=None
+    decisionTree = None
+    header = None
+    trainingData = None
+
     if args.example == 1:
         # the smaller example
-        trainingData = loadCSV(
+        header, trainingData = loadCSV(
             "data/tbc.csv"
         )  # sorry for not translating the TBC and pneumonia symptoms
         decisionTree = growDecisionTreeFrom(trainingData, evaluationFunction=eval_fn)
@@ -337,12 +375,12 @@ if __name__ == "__main__":
         print_classification_result(complete_sample, result1)
 
         missing_sample = [None, "leicht", None, "Flocken", "fiepend"]
-        result2 = classify(missing_sample, decisionTree, dataMissing=True) 
+        result2 = classify(missing_sample, decisionTree, dataMissing=True)
         print_classification_result(missing_sample, result2)  # no longer unique
         # Don't forget if you compare the resulting tree with the tree in my presentation: here it is a binary tree!
     else:
         # the bigger example
-        trainingData = loadCSV("data/fishiris.csv")  # demo data from matlab
+        header, trainingData = loadCSV("data/fishiris.csv")  # demo data from matlab
         decisionTree = growDecisionTreeFrom(trainingData)
         print(decisionTree)
 
@@ -356,16 +394,16 @@ if __name__ == "__main__":
         complete_sample = [6.0, 2.2, 5.0, 1.5]
         result1 = classify(complete_sample, decisionTree, dataMissing=False)
         print_classification_result(complete_sample, result1)
-        
+
         # Example 2: A sample with missing data
         missing_sample = [None, None, None, 1.5]
         result2 = classify(missing_sample, decisionTree, dataMissing=True)
-        print_classification_result(missing_sample, result2) # no longer unique
+        print_classification_result(missing_sample, result2)  # no longer unique
 
     if args.plot:
         # Remove extension if present
         filename = args.plot.rsplit(".", 1)[0]
         fileformat = args.plot.rsplit(".", 1)[-1]
-        dot = export_tree(decisionTree)
+        dot = export_tree(decisionTree, header)
         dot.render(filename, format=fileformat, cleanup=True)
         print(f"Decision tree exported to {filename}.{fileformat}")
