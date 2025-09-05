@@ -98,6 +98,6 @@ Detailed Scores (Leaf Node Counts / Weights):
 Decision tree exported to tree_iris.png
 ```
 
-| ![Iris Decision Tree](tree_iris.png) |
+| ![Iris Decision Tree](assets/tree_iris.png) |
 | --- |
 

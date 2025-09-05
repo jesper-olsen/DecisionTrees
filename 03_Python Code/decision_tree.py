@@ -324,7 +324,7 @@ if __name__ == "__main__":
     if args.example == 1:
         # the smaller example
         trainingData = loadCSV(
-            "tbc.csv"
+            "data/tbc.csv"
         )  # sorry for not translating the TBC and pneumonia symptoms
         decisionTree = growDecisionTreeFrom(trainingData, evaluationFunction=eval_fn)
         print(decisionTree)
@@ -337,12 +337,12 @@ if __name__ == "__main__":
         print_classification_result(complete_sample, result1)
 
         missing_sample = [None, "leicht", None, "Flocken", "fiepend"]
-        result1 = classify(missing_sample, decisionTree, dataMissing=True) 
+        result2 = classify(missing_sample, decisionTree, dataMissing=True) 
         print_classification_result(missing_sample, result2)  # no longer unique
         # Don't forget if you compare the resulting tree with the tree in my presentation: here it is a binary tree!
     else:
         # the bigger example
-        trainingData = loadCSV("fishiris.csv")  # demo data from matlab
+        trainingData = loadCSV("data/fishiris.csv")  # demo data from matlab
         decisionTree = growDecisionTreeFrom(trainingData)
         print(decisionTree)
 
