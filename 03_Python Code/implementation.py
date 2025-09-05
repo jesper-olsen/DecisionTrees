@@ -170,10 +170,8 @@ def classify(observations, tree, dataMissing=False):
                 fcount = sum(fr.values())
                 tw = float(tcount)/(tcount + fcount)
                 fw = float(fcount)/(tcount + fcount)
-                result = collections.defaultdict(int) # Problem description: http://blog.ludovf.net/python-collections-defaultdict/
-                for k, v in tr.items(): result[k] += v*tw
-                for k, v in fr.items(): result[k] += v*fw
-                return dict(result)
+                keys = tr.keys() | fr.keys()          # Py3.9+
+                return {k: tr.get(k, 0) * tw + fr.get(k, 0) * fw for k in keys}
             else:
                 branch = None
                 if isinstance(v, int) or isinstance(v, float):
