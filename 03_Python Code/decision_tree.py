@@ -5,46 +5,6 @@ from math import log2
 from graphviz import Digraph
 
 
-class DecisionNode:
-    def __init__(
-        self,
-        col=None,
-        value=None,
-        class_counts=None,
-        trueBranch=None,
-        falseBranch=None,
-        summary=None,
-    ):
-        self.col = col
-        self.value = value
-        self.class_counts = class_counts  # only for leaves; None for internal nodes
-        self.trueBranch = trueBranch
-        self.falseBranch = falseBranch
-        self.summary = summary
-
-    def __str__(self, headings=None, indent=""):
-        if self.class_counts:  # Leaf
-            lsX = sorted(self.class_counts.items())
-            return ", ".join(f"{x}: {y}" for x, y in lsX)
-        else:
-            szCol = f"Column {self.col}"
-            if headings and szCol in headings:
-                szCol = headings[szCol]
-
-            if isinstance(self.value, (int, float)):
-                decision = f"{szCol} >= {self.value}?"
-            else:
-                decision = f"{szCol} == {self.value}?"
-
-            trueBranchStr = (
-                indent + "yes -> " + self.trueBranch.__str__(headings, indent + "    ")
-            )
-            falseBranchStr = (
-                indent + "no  -> " + self.falseBranch.__str__(headings, indent + "    ")
-            )
-            return decision + "\n" + trueBranchStr + "\n" + falseBranchStr
-
-
 def divideSet(rows, column, value):
     """Splits a dataset on a specific column.
 
@@ -91,14 +51,105 @@ def gini(rows):
     return 1.0 - sum((count / total) ** 2 for count in uniqueCounts(rows).values())
 
 
-# def variance(rows):
-#     if not rows:
-#         return 0.0
-#     total = len(rows)
-#     data = [row[-1] for row in rows]
-#     mean = sum(data) / total
-#     variance = sum([(d - mean) ** 2 for d in data]) / total
-#     return variance
+class DecisionNode:
+    def __init__(
+        self,
+        col=None,
+        value=None,
+        class_counts=None,
+        trueBranch=None,
+        falseBranch=None,
+        summary=None,
+    ):
+        self.col = col
+        self.value = value
+        self.class_counts = class_counts  # only for leaves; None for internal nodes
+        self.trueBranch = trueBranch
+        self.falseBranch = falseBranch
+        self.summary = summary
+
+    def __str__(self, headings=None, indent=""):
+        if self.class_counts:  # Leaf
+            lsX = sorted(self.class_counts.items())
+            return ", ".join(f"{x}: {y}" for x, y in lsX)
+        else:
+            szCol = f"Column {self.col}"
+            if headings and szCol in headings:
+                szCol = headings[szCol]
+
+            if isinstance(self.value, (int, float)):
+                decision = f"{szCol} >= {self.value}?"
+            else:
+                decision = f"{szCol} == {self.value}?"
+
+            trueBranchStr = (
+                indent + "yes -> " + self.trueBranch.__str__(headings, indent + "    ")
+            )
+            falseBranchStr = (
+                indent + "no  -> " + self.falseBranch.__str__(headings, indent + "    ")
+            )
+            return decision + "\n" + trueBranchStr + "\n" + falseBranchStr
+
+    def pick_branch(self, v):
+        cond = v >= self.value if isinstance(v, (int, float)) else v == self.value
+        return self.trueBranch if cond else self.falseBranch
+
+    def classify(self, observations):
+        """Classifies the observations - assume no missing observations"""
+        if self.class_counts:  # leaf
+            return self.class_counts
+        v = observations[self.col]
+        branch = self.pick_branch(v)
+        return branch.classify(observations)
+
+    def classify_with_missing_data(self, observations):
+        """Classifies the observations - may have missing (None) observations"""
+        if self.class_counts:  # leaf
+            return self.class_counts
+
+        v = observations[self.col]
+        if v is not None:
+            branch = self.pick_branch(v)
+            return branch.classify_with_missing_data(observations)
+
+        # missing feature value - ignore and fuse branches
+        tr = self.trueBranch.classify_with_missing_data(observations)
+        fr = self.falseBranch.classify_with_missing_data(observations)
+        tcount = sum(tr.values())
+        fcount = sum(fr.values())
+        tw = tcount / (tcount + fcount)
+        fw = fcount / (tcount + fcount)
+        keys = tr.keys() | fr.keys()
+        return Counter({k: tr.get(k, 0) * tw + fr.get(k, 0) * fw for k in keys})
+
+    def prune(self, minGain, evaluationFunction=entropy, notify=False):
+        """Prunes the obtained tree according to the minimal gain (entropy or Gini)."""
+        # recursive call for each branch
+        if not self.trueBranch.class_counts:
+            self.trueBranch.prune(minGain, evaluationFunction, notify)
+        if not self.falseBranch.class_counts:
+            self.falseBranch.prune(minGain, evaluationFunction, notify)
+
+        # merge leaves (potentionally)
+        if self.trueBranch.class_counts and self.falseBranch.class_counts:
+            tb, fb = [], []
+
+            for v, c in self.trueBranch.class_counts.items():
+                tb += [[v]] * c
+            for v, c in self.falseBranch.class_counts.items():
+                fb += [[v]] * c
+
+            p = len(tb) / len(tb + fb)
+            delta = (
+                evaluationFunction(tb + fb)
+                - p * evaluationFunction(tb)
+                - (1 - p) * evaluationFunction(fb)
+            )
+            if delta < minGain:
+                if notify:
+                    print("A branch was pruned: gain = %f" % delta)
+                self.trueBranch, self.falseBranch = None, None
+                self.class_counts = uniqueCounts(tb + fb)
 
 
 def growDecisionTreeFrom(rows, evaluationFunction=entropy):
@@ -127,7 +178,7 @@ def growDecisionTreeFrom(rows, evaluationFunction=entropy):
                 - p * evaluationFunction(set1)
                 - (1 - p) * evaluationFunction(set2)
             )
-            if gain > bestGain and len(set1) > 0 and len(set2) > 0:
+            if gain > bestGain and set1 and set2:
                 bestGain = gain
                 bestAttribute = (col, value)
                 bestSets = (set1, set2)
@@ -146,93 +197,6 @@ def growDecisionTreeFrom(rows, evaluationFunction=entropy):
         )
     else:
         return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
-
-
-def prune(tree, minGain, evaluationFunction=entropy, notify=False):
-    """Prunes the obtained tree according to the minimal gain (entropy or Gini)."""
-    # recursive call for each branch
-    if not tree.trueBranch.class_counts:
-        prune(tree.trueBranch, minGain, evaluationFunction, notify)
-    if not tree.falseBranch.class_counts:
-        prune(tree.falseBranch, minGain, evaluationFunction, notify)
-
-    # merge leaves (potentionally)
-    if tree.trueBranch.class_counts and tree.falseBranch.class_counts:
-        tb, fb = [], []
-
-        for v, c in tree.trueBranch.class_counts.items():
-            tb += [[v]] * c
-        for v, c in tree.falseBranch.class_counts.items():
-            fb += [[v]] * c
-
-        p = len(tb) / len(tb + fb)
-        delta = (
-            evaluationFunction(tb + fb)
-            - p * evaluationFunction(tb)
-            - (1 - p) * evaluationFunction(fb)
-        )
-        if delta < minGain:
-            if notify:
-                print("A branch was pruned: gain = %f" % delta)
-            tree.trueBranch, tree.falseBranch = None, None
-            tree.class_counts = uniqueCounts(tb + fb)
-
-
-def classify(observations, tree, dataMissing=False):
-    """Classifies the observationss according to the tree.
-    dataMissing: true or false if data are missing or not."""
-
-    def classifyWithoutMissingData(observations, tree):
-        if tree.class_counts:  # leaf
-            return tree.class_counts
-        else:
-            v = observations[tree.col]
-            branch = None
-            if isinstance(v, int) or isinstance(v, float):
-                if v >= tree.value:
-                    branch = tree.trueBranch
-                else:
-                    branch = tree.falseBranch
-            else:
-                if v == tree.value:
-                    branch = tree.trueBranch
-                else:
-                    branch = tree.falseBranch
-        return classifyWithoutMissingData(observations, branch)
-
-    def classifyWithMissingData(observations, tree):
-        if tree.class_counts:  # leaf
-            return tree.class_counts
-        else:
-            v = observations[tree.col]
-            if v == None:
-                tr = classifyWithMissingData(observations, tree.trueBranch)
-                fr = classifyWithMissingData(observations, tree.falseBranch)
-                tcount = sum(tr.values())
-                fcount = sum(fr.values())
-                tw = tcount / (tcount + fcount)
-                fw = fcount / (tcount + fcount)
-                keys = tr.keys() | fr.keys()
-                return Counter({k: tr.get(k, 0) * tw + fr.get(k, 0) * fw for k in keys})
-            else:
-                branch = None
-                if isinstance(v, int) or isinstance(v, float):
-                    if v >= tree.value:
-                        branch = tree.trueBranch
-                    else:
-                        branch = tree.falseBranch
-                else:
-                    if v == tree.value:
-                        branch = tree.trueBranch
-                    else:
-                        branch = tree.falseBranch
-            return classifyWithMissingData(observations, branch)
-
-    # function body
-    if dataMissing:
-        return classifyWithMissingData(observations, tree)
-    else:
-        return classifyWithoutMissingData(observations, tree)
 
 
 def print_classification_result(sample, result):
@@ -349,8 +313,8 @@ if __name__ == "__main__":
     #     1. Load training data
     #     2. Let the decision tree grow
     #     4. Plot the decision tree
-    #     5. classify without missing data
-    #     6. Classifiy with missing data
+    #     5. Classify without missing data
+    #     6. Classify with missing data
     #     (7.) Prune the decision tree according to a minimal gain level
     #     (8.) Plot the pruned tree
 
@@ -370,11 +334,11 @@ if __name__ == "__main__":
 
         # Example 1: A sample with complete data
         complete_sample = ["ohne", "leicht", "Streifen", "normal", "normal"]
-        result1 = classify(complete_sample, decisionTree, dataMissing=False)
+        result1 = decisionTree.classify(complete_sample)
         print_classification_result(complete_sample, result1)
 
         missing_sample = [None, "leicht", None, "Flocken", "fiepend"]
-        result2 = classify(missing_sample, decisionTree, dataMissing=True)
+        result2 = decisionTree.classify_with_missing_data(missing_sample)
         print_classification_result(missing_sample, result2)  # no longer unique
         # Don't forget if you compare the resulting tree with the tree in my presentation: here it is a binary tree!
     else:
@@ -384,19 +348,19 @@ if __name__ == "__main__":
         print(decisionTree)
 
         # notify, when a branch is pruned (one time in this example)
-        prune(decisionTree, 0.5, evaluationFunction=eval_fn, notify=True)
+        decisionTree.prune(0.5, evaluationFunction=eval_fn, notify=True)
         print(decisionTree)
 
         print("\n--- Classification Examples ---")
 
         # Example 1: A sample with complete data
         complete_sample = [6.0, 2.2, 5.0, 1.5]
-        result1 = classify(complete_sample, decisionTree, dataMissing=False)
+        result1 = decisionTree.classify(complete_sample)
         print_classification_result(complete_sample, result1)
 
         # Example 2: A sample with missing data
         missing_sample = [None, None, None, 1.5]
-        result2 = classify(missing_sample, decisionTree, dataMissing=True)
+        result2 = decisionTree.classify_with_missing_data(missing_sample)
         print_classification_result(missing_sample, result2)  # no longer unique
 
     if args.plot:
