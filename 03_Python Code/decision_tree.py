@@ -5,6 +5,154 @@ from math import log2
 from graphviz import Digraph
 
 
+class DecisionTree:
+    def __init__(self, root_node, header):
+        self.root_node = root_node
+        self.header = header
+
+    def __str__(self, indent=""):
+        return self.root_node.__str__(headings=self.header, indent=indent)
+
+    @staticmethod
+    def _eval_fn(criterion):
+        if criterion == "entropy":
+            return entropy
+        elif criterion == "gini":
+            return gini
+        else:
+            raise ValueError(f"Unknown criterion: {criterion}")
+
+    @classmethod
+    def train(cls, data, header, criterion="entropy"):
+        """Trains a decision tree.
+
+        Args:
+            data (list of lists): The training dataset.
+            header (list): The list of feature names.
+            criterion (str): The criterion to use for splitting ('entropy' or 'gini').
+        """
+        eval_fn = DecisionTree._eval_fn(criterion)
+        root = cls._grow_tree(data, criterion=eval_fn)
+        return cls(root, header)
+
+    @staticmethod
+    def _grow_tree(rows, criterion):
+        """Grows and then returns a binary decision tree node."""
+        if not rows:
+            return DecisionNode()
+        currentScore = criterion(rows)
+
+        bestGain = 0.0
+        bestAttribute = None
+        bestSets = None
+
+        columnCount = len(rows[0]) - 1
+        for col in range(columnCount):
+            columnValues = set(row[col] for row in rows)
+            for value in columnValues:
+                (set1, set2) = divideSet(rows, col, value)
+                if not set1 or not set2:
+                    continue
+
+                p = len(set1) / len(rows)
+                gain = currentScore - p * criterion(set1) - (1 - p) * criterion(set2)
+                if gain > bestGain:
+                    bestGain = gain
+                    bestAttribute = (col, value)
+                    bestSets = (set1, set2)
+
+        summary = {"impurity": currentScore, "samples": len(rows)}
+
+        if bestGain > 0:
+            trueBranch = DecisionTree._grow_tree(bestSets[0], criterion)
+            falseBranch = DecisionTree._grow_tree(bestSets[1], criterion)
+            return DecisionNode(
+                col=bestAttribute[0],
+                value=bestAttribute[1],
+                trueBranch=trueBranch,
+                falseBranch=falseBranch,
+                summary=summary,
+            )
+        else:
+            return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
+
+    def classify(self, sample, handle_missing=True):
+        if handle_missing:
+            return self.root_node.classify_with_missing_data(sample)
+        else:
+            return self.root_node.classify(sample)
+
+    def prune(self, min_gain, criterion="entropy", notify=False):
+        eval_fn = DecisionTree._eval_fn(criterion)
+        self.root_node.prune(min_gain, criterion=eval_fn, notify=notify)
+
+    def export_graph(self, filename):
+        """Exports the decision tree to a file using Graphviz with deterministic output."""
+        file, ext = filename.rsplit(".", 1)
+
+        dot = Digraph()
+        dot.attr("node", shape="box", style="filled, rounded")
+
+        # We use a mutable list as a counter so it can be modified by the recursive calls.
+        # Each node gets a unique, sequential ID (0, 1, 2, ...).
+        node_counter = [0]
+
+        self._export_tree(self.root_node, self.header, dot, node_counter)
+        dot.render(file, format=ext, cleanup=True)
+        print(f"Decision tree exported to {filename}")
+
+    @staticmethod
+    def _export_tree(tree, header, dot, counter):
+        """
+        Recursively builds the Graphviz DOT representation with deterministic node IDs.
+        Returns the ID of the node it just processed.
+        """
+        # 1. Assign the current node a unique ID from the counter.
+        node_id = str(counter[0])
+        counter[0] += 1
+
+        # 2. Create the node's label based on whether it's a leaf or decision node.
+        if tree.class_counts:  # Leaf node
+            class_counts = "<BR/>".join(
+                f"{k}: {v}" for k, v in sorted(tree.class_counts.items())
+            )
+            label = f"""<
+    <B>Leaf</B><BR/>
+    {class_counts}<BR/>
+    impurity = {tree.summary['impurity']:.3f}<BR/>
+    samples = {tree.summary['samples']}
+    >"""
+            dot.node(node_id, label, fillcolor="#e58139aa")
+        else:  # Decision node
+            column_name = header[tree.col]
+            condition = (
+                f"{column_name} &ge; {tree.value}"
+                if isinstance(tree.value, (int, float))
+                else f"{column_name} == {tree.value}"
+            )
+            label = f"""<
+    <B>{condition}</B><BR/>
+    impurity = {tree.summary['impurity']:.3f}<BR/>
+    samples = {tree.summary['samples']}
+    >"""
+            dot.node(node_id, label, fillcolor="#399de5aa")
+
+            # 3. Recurse for children and create edges to them.
+            # The child's ID is returned by the recursive call.
+            true_child_id = DecisionTree._export_tree(
+                tree.trueBranch, header, dot, counter
+            )
+            dot.edge(node_id, true_child_id, label="True")
+
+            false_child_id = DecisionTree._export_tree(
+                tree.falseBranch, header, dot, counter
+            )
+            dot.edge(node_id, false_child_id, label="False")
+
+        # 4. Return the ID of the current node so its parent can create an edge to it.
+        return node_id
+
+
 def divideSet(rows, column, value):
     """Splits a dataset on a specific column.
 
@@ -17,7 +165,7 @@ def divideSet(rows, column, value):
         tuple: A tuple containing two lists of rows.
     """
     splittingFunction = None
-    if isinstance(value, int) or isinstance(value, float):  # for int and float values
+    if isinstance(value, (int, float)):  # for numeric values
         splittingFunction = lambda row: row[column] >= value
     else:  # for strings
         splittingFunction = lambda row: row[column] == value
@@ -28,11 +176,14 @@ def divideSet(rows, column, value):
 
 def uniqueCounts(rows):
     """Counts the occurrences of each class in the dataset."""
-    # The response variable is in the last column
+    # The class label is in the last column
     return Counter(row[-1] for row in rows)
 
 
 def entropy(rows):
+    """Calculates the entropy for a list of rows
+    https://en.wikipedia.org/wiki/Entropy_(information_theory)
+    """
     if not rows:
         return 0.0
     total = len(rows)
@@ -73,9 +224,14 @@ class DecisionNode:
             lsX = sorted(self.class_counts.items())
             return ", ".join(f"{x}: {y}" for x, y in lsX)
         else:
-            szCol = f"Column {self.col}"
-            if headings and szCol in headings:
-                szCol = headings[szCol]
+            if headings:
+                szCol = headings[self.col]
+            else:
+                szCol = f"Column {self.col}"
+
+            # szCol = f"Column {self.col}"
+            # if headings and szCol in headings:
+            #     szCol = headings[szCol]
 
             if isinstance(self.value, (int, float)):
                 decision = f"{szCol} >= {self.value}?"
@@ -112,7 +268,8 @@ class DecisionNode:
             branch = self.pick_branch(v)
             return branch.classify_with_missing_data(observations)
 
-        # missing feature value - ignore and fuse branches
+        # Handle missing feature: combine results from both branches,
+        # weighted by the number of samples in each branch's subtree.
         tr = self.trueBranch.classify_with_missing_data(observations)
         fr = self.falseBranch.classify_with_missing_data(observations)
         tcount = sum(tr.values())
@@ -122,13 +279,13 @@ class DecisionNode:
         keys = tr.keys() | fr.keys()
         return Counter({k: tr.get(k, 0) * tw + fr.get(k, 0) * fw for k in keys})
 
-    def prune(self, minGain, evaluationFunction=entropy, notify=False):
+    def prune(self, minGain, criterion=entropy, notify=False):
         """Prunes the obtained tree according to the minimal gain (entropy or Gini)."""
         # recursive call for each branch
         if not self.trueBranch.class_counts:
-            self.trueBranch.prune(minGain, evaluationFunction, notify)
+            self.trueBranch.prune(minGain, criterion, notify)
         if not self.falseBranch.class_counts:
-            self.falseBranch.prune(minGain, evaluationFunction, notify)
+            self.falseBranch.prune(minGain, criterion, notify)
 
         # merge leaves (potentionally)
         if self.trueBranch.class_counts and self.falseBranch.class_counts:
@@ -140,62 +297,12 @@ class DecisionNode:
                 fb += [[v]] * c
 
             p = len(tb) / len(tb + fb)
-            delta = (
-                evaluationFunction(tb + fb)
-                - p * evaluationFunction(tb)
-                - (1 - p) * evaluationFunction(fb)
-            )
+            delta = criterion(tb + fb) - p * criterion(tb) - (1 - p) * criterion(fb)
             if delta < minGain:
                 if notify:
                     print("A branch was pruned: gain = %f" % delta)
                 self.trueBranch, self.falseBranch = None, None
                 self.class_counts = uniqueCounts(tb + fb)
-
-
-def grow_decision_tree(rows, evaluationFunction=entropy):
-    """Grows and then returns a binary decision tree.
-    evaluationFunction: entropy or gini"""
-
-    if len(rows) == 0:
-        return DecisionNode()
-    currentScore = evaluationFunction(rows)
-
-    bestGain = 0.0
-    bestAttribute = None
-    bestSets = None
-
-    columnCount = len(rows[0]) - 1  # last column is the result/target column
-    for col in range(columnCount):
-        columnValues = set([row[col] for row in rows])
-
-        for value in columnValues:
-            (set1, set2) = divideSet(rows, col, value)
-
-            # Gain -- Entropy or Gini
-            p = len(set1) / len(rows)
-            gain = (
-                currentScore
-                - p * evaluationFunction(set1)
-                - (1 - p) * evaluationFunction(set2)
-            )
-            if gain > bestGain and set1 and set2:
-                bestGain = gain
-                bestAttribute = (col, value)
-                bestSets = (set1, set2)
-
-    summary = {"impurity": currentScore, "samples": len(rows)}
-
-    if bestGain > 0:
-        trueBranch = grow_decision_tree(bestSets[0], evaluationFunction)
-        falseBranch = grow_decision_tree(bestSets[1], evaluationFunction)
-        return DecisionNode(
-            col=bestAttribute[0],
-            value=bestAttribute[1],
-            trueBranch=trueBranch,
-            falseBranch=falseBranch,
-            summary=summary,
-        )
-    return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
 
 
 def print_classification_result(sample, result):
@@ -241,50 +348,6 @@ def loadCSV(file):
         return header, data
 
 
-def export_tree(tree, header, dot=None):
-    """Recursively export a decision tree to Graphviz DOT format with rich labels."""
-    if dot is None:
-        dot = Digraph()
-        dot.attr("node", shape="box", style="filled, rounded")  # Set default node style
-
-    # Use a unique ID for each node
-    node_id = str(id(tree))
-
-    if tree.class_counts:  # Leaf node
-        # Create a label with class counts, impurity, and total samples
-        class_counts = "<BR/>".join(f"{k}: {v}" for k, v in tree.class_counts.items())
-        label = f"""<
-<B>Leaf</B><BR/>
-{class_counts}<BR/>
-impurity = {tree.summary['impurity']:.3f}<BR/>
-samples = {tree.summary['samples']}
->"""
-        dot.node(node_id, label, fillcolor="#e58139aa")  # Use a leaf color
-    else:
-        # Decision node
-        column_name = header[tree.col]
-        if isinstance(tree.value, (int, float)):
-            condition = f"{column_name} &ge; {tree.value}"
-        else:
-            condition = f"{column_name} == {tree.value}"
-
-        # Create a label with the condition, impurity, and sample count
-        label = f"""<
-<B>{condition}</B><BR/>
-impurity = {tree.summary['impurity']:.3f}<BR/>
-samples = {tree.summary['samples']}
->"""
-        dot.node(node_id, label, fillcolor="#399de5aa")  # Use a node color
-
-        # Recurse for children
-        dot.edge(node_id, str(id(tree.trueBranch)), label="True")
-        export_tree(tree.trueBranch, header, dot)
-        dot.edge(node_id, str(id(tree.falseBranch)), label="False")
-        export_tree(tree.falseBranch, header, dot)
-
-    return dot
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Decision tree demo")
     parser.add_argument(
@@ -297,7 +360,7 @@ if __name__ == "__main__":
         "--criterion",
         choices=["entropy", "gini"],
         default="entropy",
-        help="Evaluation function to use for splits (default: entropy)",
+        help="Criterion to use for splits (default: entropy)",
     )
     parser.add_argument(
         "--plot",
@@ -305,8 +368,6 @@ if __name__ == "__main__":
         help="Export the decision tree as a Graphviz image (e.g. tree.png or tree.svg)",
     )
     args = parser.parse_args()
-
-    eval_fn = entropy if args.criterion == "entropy" else gini
 
     # All examples do the following steps:
     #     1. Load training data
@@ -323,49 +384,41 @@ if __name__ == "__main__":
 
     if args.example == 1:
         # the smaller example
-        header, trainingData = loadCSV(
-            "data/tbc.csv"
-        )  # sorry for not translating the TBC and pneumonia symptoms
-        decisionTree = grow_decision_tree(trainingData, evaluationFunction=eval_fn)
-        print(decisionTree)
+        header, trainingData = loadCSV("data/tbc.csv")
+        dt = DecisionTree.train(trainingData, header, criterion=args.criterion)
+        print(dt)
 
         print("\n--- Classification Examples ---")
 
         # Example 1: A sample with complete data
         complete_sample = ["ohne", "leicht", "Streifen", "normal", "normal"]
-        result1 = decisionTree.classify(complete_sample)
+        result1 = dt.classify(complete_sample, handle_missing=False)
         print_classification_result(complete_sample, result1)
 
         missing_sample = [None, "leicht", None, "Flocken", "fiepend"]
-        result2 = decisionTree.classify_with_missing_data(missing_sample)
+        result2 = dt.classify(missing_sample, handle_missing=True)
         print_classification_result(missing_sample, result2)  # no longer unique
         # Don't forget if you compare the resulting tree with the tree in my presentation: here it is a binary tree!
     else:
         # the bigger example
         header, trainingData = loadCSV("data/fishiris.csv")  # demo data from matlab
-        decisionTree = grow_decision_tree(trainingData)
-        print(decisionTree)
-
+        dt = DecisionTree.train(trainingData, header, criterion=args.criterion)
+        print(dt)
         # notify, when a branch is pruned (one time in this example)
-        decisionTree.prune(0.5, evaluationFunction=eval_fn, notify=True)
-        print(decisionTree)
+        dt.prune(0.5, criterion=args.criterion, notify=True)
+        print(dt)
 
         print("\n--- Classification Examples ---")
 
         # Example 1: A sample with complete data
         complete_sample = [6.0, 2.2, 5.0, 1.5]
-        result1 = decisionTree.classify(complete_sample)
+        result1 = dt.classify(complete_sample, handle_missing=False)
         print_classification_result(complete_sample, result1)
 
         # Example 2: A sample with missing data
         missing_sample = [None, None, None, 1.5]
-        result2 = decisionTree.classify_with_missing_data(missing_sample)
+        result2 = dt.classify(missing_sample, handle_missing=True)
         print_classification_result(missing_sample, result2)  # no longer unique
 
     if args.plot:
-        # Remove extension if present
-        filename = args.plot.rsplit(".", 1)[0]
-        fileformat = args.plot.rsplit(".", 1)[-1]
-        dot = export_tree(decisionTree, header)
-        dot.render(filename, format=fileformat, cleanup=True)
-        print(f"Decision tree exported to {filename}.{fileformat}")
+        dt.export_graph(args.plot)
