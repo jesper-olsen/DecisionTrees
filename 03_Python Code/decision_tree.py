@@ -152,7 +152,7 @@ class DecisionNode:
                 self.class_counts = uniqueCounts(tb + fb)
 
 
-def growDecisionTreeFrom(rows, evaluationFunction=entropy):
+def grow_decision_tree(rows, evaluationFunction=entropy):
     """Grows and then returns a binary decision tree.
     evaluationFunction: entropy or gini"""
 
@@ -186,8 +186,8 @@ def growDecisionTreeFrom(rows, evaluationFunction=entropy):
     summary = {"impurity": currentScore, "samples": len(rows)}
 
     if bestGain > 0:
-        trueBranch = growDecisionTreeFrom(bestSets[0], evaluationFunction)
-        falseBranch = growDecisionTreeFrom(bestSets[1], evaluationFunction)
+        trueBranch = grow_decision_tree(bestSets[0], evaluationFunction)
+        falseBranch = grow_decision_tree(bestSets[1], evaluationFunction)
         return DecisionNode(
             col=bestAttribute[0],
             value=bestAttribute[1],
@@ -195,8 +195,7 @@ def growDecisionTreeFrom(rows, evaluationFunction=entropy):
             falseBranch=falseBranch,
             summary=summary,
         )
-    else:
-        return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
+    return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
 
 
 def print_classification_result(sample, result):
@@ -327,7 +326,7 @@ if __name__ == "__main__":
         header, trainingData = loadCSV(
             "data/tbc.csv"
         )  # sorry for not translating the TBC and pneumonia symptoms
-        decisionTree = growDecisionTreeFrom(trainingData, evaluationFunction=eval_fn)
+        decisionTree = grow_decision_tree(trainingData, evaluationFunction=eval_fn)
         print(decisionTree)
 
         print("\n--- Classification Examples ---")
@@ -344,7 +343,7 @@ if __name__ == "__main__":
     else:
         # the bigger example
         header, trainingData = loadCSV("data/fishiris.csv")  # demo data from matlab
-        decisionTree = growDecisionTreeFrom(trainingData)
+        decisionTree = grow_decision_tree(trainingData)
         print(decisionTree)
 
         # notify, when a branch is pruned (one time in this example)
