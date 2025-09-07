@@ -81,7 +81,7 @@ options:
 
 ### Train on the Iris Dataset (80/20 train/test split)
 
-Specify a pruning threshold and save a visualisation of the tree:
+Specify a pruning threshold and save a visualisation of trained the tree:
 ``` bash
 uv run eval_tree.py data/fishiris.csv --prune 0.1 --split_ratio 0.8 --plot tree_iris.png
 ```
@@ -111,6 +111,8 @@ Model Accuracy: 93.33%
 | --- |
 
 ### 10-Fold Cross Validation on the Wine Quality Dataset
+
+The Wine Quality dataset was introduced in [3] where they reported an accuracy of 62% for red wine and 65% for white wine (SVM classifier).
 
 ``` bash
 uv run eval_tree.py data/winequality-red.csv -k 10
