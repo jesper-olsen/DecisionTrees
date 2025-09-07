@@ -1,6 +1,6 @@
 # Python Decision Tree
 
-A from-scratch implementation of a CART (Classification and Regression Tree) algorithm in Python. This repository provides a decision_tree.py library and a command-line script, evaluate_tree.py, for training, evaluating, and visualizing models on CSV datasets.
+A from-scratch implementation of a CART (Classification and Regression Tree) algorithm in Python. This repository provides a decision_tree.py library and a command-line script, eval_tree.py, for training, evaluating, and visualizing models on CSV datasets.
 
 ## Features
 
