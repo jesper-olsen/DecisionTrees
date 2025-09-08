@@ -13,7 +13,7 @@ A from-scratch implementation of a CART (Classification and Regression Tree) alg
 * Provides three robust evaluation methods:
   * Simple train/test split.
   * K-Fold Cross-Validation for a stable performance estimate.
-  * Evaluation ona separate, pre-defined test file.
+  * Evaluation on a separate, pre-defined test file.
 * Visualises the trained decision tree into an image file (.png, .svg, etc.) using Graphviz.
 
 
