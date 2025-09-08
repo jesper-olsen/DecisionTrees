@@ -4,21 +4,17 @@ A from-scratch implementation of a CART (Classification and Regression Tree) alg
 
 ## Features
 
-* Builds a decision tree from any CSV dataset.
-* Supports both Gini Impurity and Information Gain (Entropy) as splitting criteria.
-* Implements post-pruning based on a minimum gain threshold to prevent overfitting.
-* Classifies new data samples, including robust handling of missing feature values.
-* Provides two robust evaluation methods:
+* Builds a decision tree from a CSV dataset.
+* Supports both **Gini Impurity** and **Information Gain (Entropy)** as splitting criteria.
+* Implements two types of pruning to prevent overfitting:
+  * Pre-pruning: `max_depth` and `min_samples_split`.
+  * post-pruning: Based on a minimum gain threshold.
+* Classifies new data samples, including robust handling of missing feature values (e.g., `?`).
+* Provides three robust evaluation methods:
   * Simple train/test split.
-  * K-Fold Cross-Validation for a more accurate performance estimate.
-* Visualizes the trained decision tree into an image file (.png, .svg, etc.) using Graphviz.
-
-## References
-
-1. [TBC Dataset](https://www.kaggle.com/datasets/tawsifurrahman/tuberculosis-tb-chest-xray-dataset)
-2. [Iris Dataset](https://archive.ics.uci.edu/dataset/53/iris)
-3. [Wine Quality Dataset](https://archive.ics.uci.edu/dataset/186/wine+quality)
-4. [Modeling wine preferences by data mining from physicochemical properties, Paulo Cortez et al.](https://repositorium.sdum.uminho.pt/bitstream/1822/10029/1/wine5.pdf)
+  * K-Fold Cross-Validation for a stable performance estimate.
+  * Evaluation ona separate, pre-defined test file.
+* Visualises the trained decision tree into an image file (.png, .svg, etc.) using Graphviz.
 
 
 ## Prerequisites
@@ -53,35 +49,35 @@ The primary script for training and evaluation is ```eval_tree.py```.
 Run the script from your terminal, specifying the dataset and the desired options:
 
 ``` text
-usage: eval_tree.py [-h] [-s SPLIT_RATIO] [-c {entropy,gini}] [-p PRUNE] [--plot FILE]
-                    [-k K_FOLDS]
-                    file_path
-
-Train and evaluate a decision tree on a given dataset.
-
 positional arguments:
-  file_path             Path to the CSV dataset file.
+  file_path             Path to the training CSV dataset file.
 
 options:
   -h, --help            show this help message and exit
+  --max_depth MAX_DEPTH
+                        Maximum depth of the tree. Default: None (unlimited)
+  --min_samples_split MIN_SAMPLES_SPLIT
+                        Minimum number of samples required to split a node (default: 2)
+  --test_file TEST_FILE
+                        Optional path to a separate CSV test dataset file. If provided, overrides split/k-fold.
   -s SPLIT_RATIO, --split_ratio SPLIT_RATIO
                         Proportion for training in a simple split. Default: 0.8
   -c {entropy,gini}, --criterion {entropy,gini}
                         The splitting criterion to use. Default: 'gini'
   -p PRUNE, --prune PRUNE
                         Minimum gain to keep a branch. Default: 0.0 (no pruning).
-  --plot FILE           Export the decision tree as a Graphviz image (e.g. tree.png or
-                        tree.svg)
+  --plot FILE           Export the decision tree as a Graphviz image (e.g. tree.png or tree.svg)
   -k K_FOLDS, --k_folds K_FOLDS
-                        Number of folds for k-fold cross-validation. If > 1, this overrides
-                        --split_ratio. Default: 0
+                        Number of folds for k-fold cross-validation. If > 1, this overrides --split_ratio. Default: 0
 ```
 
 ## Examples
 
-### Train on the Iris Dataset (80/20 train/test split)
+### Simple Split with Pruning and Visualisation
 
-Specify a pruning threshold and save a visualisation of trained the tree:
+Train on the Iris dataset using an 80/20 split, apply post-pruning (--prune), and save a visualisation of the
+trained tree.
+
 ``` bash
 uv run eval_tree.py data/fishiris.csv --prune 0.1 --split_ratio 0.8 --plot tree_iris.png
 ```
@@ -112,7 +108,8 @@ Model Accuracy: 93.33%
 
 ### 10-Fold Cross Validation on the Wine Quality Dataset
 
-The Wine Quality dataset was introduced in [3] where they reported an accuracy of 62% for red wine and 65% for white wine (SVM classifier).
+Perform a robust evaluation on the Wine Quality dataset [3], replicating the methodology from the original paper.
+The original paper reported an accuracy of 62% for red wine and 65% for white wine (SVM classifier).
 
 ``` bash
 uv run eval_tree.py data/winequality-red.csv -k 10
@@ -146,4 +143,37 @@ Average Accuracy: 63.78%
 Standard Deviation: 4.34%
 ==============================
 ```
+
+### Pre-Pruning with a separate Test Set (Adult Dataset)
+
+Train on the large Adult dataset, which has a pre-defined train/test split and contains missing values. Use
+pre-pruning (`--max_depth` and `--min_samples_split`) to control tree size and prevent overfitting.
+
+``` bash
+uv run eval_tree.py data/adult_train.csv --test_file data/adult_test.csv --min_samples_split 10 --max_depth 10
+```
+
+Example Output:
+```
+Loading training dataset from: data/adult_train.csv...
+Training set: 32561 rows
+Loading test dataset from: data/adult_test.csv...
+Test set: 16281 rows
+
+Training decision tree (criterion: gini)...
+Model training complete.
+
+Evaluating model accuracy on the external test set...
+
+--- Evaluation Result ---
+Model Accuracy: 86.03%
+```
+
+## References
+
+1. [TBC Dataset](https://www.kaggle.com/datasets/tawsifurrahman/tuberculosis-tb-chest-xray-dataset)
+2. [Iris Dataset](https://archive.ics.uci.edu/dataset/53/iris)
+3. [Wine Quality Dataset](https://archive.ics.uci.edu/dataset/186/wine+quality)
+4. [Modeling wine preferences by data mining from physicochemical properties, Paulo Cortez et al.](https://repositorium.sdum.uminho.pt/bitstream/1822/10029/1/wine5.pdf)
+5. [Adult (1994 Census) Dataset](https://archive.ics.uci.edu/dataset/2/adult)
 

@@ -23,7 +23,9 @@ class DecisionTree:
             raise ValueError(f"Unknown criterion: {criterion}")
 
     @classmethod
-    def train(cls, data, header, criterion="entropy"):
+    def train(
+        cls, data, header, criterion="entropy", max_depth=None, min_samples_split=2
+    ):
         """Trains a decision tree.
 
         Args:
@@ -32,15 +34,31 @@ class DecisionTree:
             criterion (str): The criterion to use for splitting ('entropy' or 'gini').
         """
         eval_fn = DecisionTree._eval_fn(criterion)
-        root = cls._grow_tree(data, criterion=eval_fn)
+        root = cls._grow_tree(
+            data, min_samples_split, max_depth, criterion=eval_fn, depth=0
+        )
         return cls(root, header)
 
     @staticmethod
-    def _grow_tree(rows, criterion):
+    def _grow_tree(rows, min_samples_split, max_depth, criterion, depth):
         """Grows and then returns a binary decision tree node."""
         if not rows:
             return DecisionNode()
+
         currentScore = criterion(rows)
+
+        # Pre-pruning
+        summary = {"impurity": currentScore, "samples": len(rows)}
+        if (max_depth is not None and depth >= max_depth) or (
+            len(rows) < min_samples_split
+        ):
+            return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
+
+        if max_depth is not None and depth >= max_depth:
+            return DecisionNode(class_counts=uniqueCounts(rows))
+
+        if len(rows) < min_samples_split:
+            return DecisionNode(class_counts=uniqueCounts(rows))
 
         bestGain = 0.0
         bestAttribute = None
@@ -64,8 +82,12 @@ class DecisionTree:
         summary = {"impurity": currentScore, "samples": len(rows)}
 
         if bestGain > 0:
-            trueBranch = DecisionTree._grow_tree(bestSets[0], criterion)
-            falseBranch = DecisionTree._grow_tree(bestSets[1], criterion)
+            trueBranch = DecisionTree._grow_tree(
+                bestSets[0], min_samples_split, max_depth, criterion, depth + 1
+            )
+            falseBranch = DecisionTree._grow_tree(
+                bestSets[1], min_samples_split, max_depth, criterion, depth + 1
+            )
             return DecisionNode(
                 col=bestAttribute[0],
                 value=bestAttribute[1],
@@ -164,14 +186,18 @@ def divideSet(rows, column, value):
     Returns:
         tuple: A tuple containing two lists of rows.
     """
-    splittingFunction = None
-    if isinstance(value, (int, float)):  # for numeric values
-        splittingFunction = lambda row: row[column] >= value
-    else:  # for strings
-        splittingFunction = lambda row: row[column] == value
-    list1 = [row for row in rows if splittingFunction(row)]
-    list2 = [row for row in rows if not splittingFunction(row)]
-    return (list1, list2)
+    set1, set2 = [], []
+    for row in rows:
+        v = row[column]
+        if v is None:
+            # missing value - duplicate row into both sets
+            set1.append(row)
+            set2.append(row)
+        elif isinstance(value, (int, float)):
+            (set1 if v >= value else set2).append(row)
+        else:
+            (set1 if v == value else set2).append(row)
+    return set1, set2
 
 
 def uniqueCounts(rows):
@@ -336,6 +362,8 @@ def loadCSV(file):
 
     def convertTypes(s):
         s = s.strip()
+        if s == "?":  # treat '?' as missing
+            return None
         try:
             return float(s) if "." in s else int(s)
         except ValueError:

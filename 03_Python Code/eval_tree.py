@@ -86,7 +86,7 @@ def kfold_eval(data, args):
         )
 
         # Train the model for this fold
-        model = DecisionTree.train(train_data, header, criterion=args.criterion)
+        model = DecisionTree.train(train_data, header, criterion=args.criterion, max_depth=args.max_depth, min_samples_split=args.min_samples_split)
 
         # Prune if requested
         if args.prune > 0.0:
@@ -118,7 +118,7 @@ def split_eval(data, args):
     print("-" * 30)
 
     print(f"Training the decision tree model (criterion: {args.criterion})...")
-    model = DecisionTree.train(train_data, header, criterion=args.criterion)
+    model = DecisionTree.train(train_data, header, criterion=args.criterion, max_depth=args.max_depth, min_samples_split=args.min_samples_split)
     print("Model training complete.")
 
     if args.prune > 0.0:
@@ -141,10 +141,18 @@ def split_eval(data, args):
 
 if __name__ == "__main__":
     # 1. Set up the Argument Parser
+    # 
     parser = argparse.ArgumentParser(
         description="Train and evaluate a decision tree on a given dataset."
     )
-    parser.add_argument("file_path", type=str, help="Path to the CSV dataset file.")
+    parser.add_argument("--max_depth", type=int, default=None, help="Maximum depth of the tree. Default: None (unlimited)")
+    parser.add_argument("--min_samples_split", type=int, default=2, help="Minimum number of samples required to split a node (default: 2)")
+    parser.add_argument("file_path", type=str, help="Path to the training CSV dataset file.")
+    parser.add_argument(
+        "--test_file",
+        type=str,
+        help="Optional path to a separate CSV test dataset file. If provided, overrides split/k-fold.",
+    )
     parser.add_argument(
         "-s",
         "--split_ratio",
@@ -181,18 +189,46 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    if args.test_file:
+        print(f"Loading training dataset from: {args.file_path}...")
+        header, train_data = loadCSV(args.file_path)
+        print(f"Training set: {len(train_data)} rows")
 
-    # 2. Load the CSV dataset
-    print(f"Loading dataset from: {args.file_path}...")
-    try:
-        header, data = loadCSV(args.file_path)
-    except FileNotFoundError:
-        print(f"Error: The file '{args.file_path}' was not found.")
-        exit()
-    print(f"Dataset loaded successfully with {len(data)} rows.")
+        print(f"Loading test dataset from: {args.test_file}...")
+        test_header, test_data = loadCSV(args.test_file)
+        print(f"Test set: {len(test_data)} rows")
 
-    # 3. Choose evaluation method: Cross-Validation or Simple Split
-    if args.k_folds > 1:
-        kfold_eval(data, args)
+        # train
+        print(f"\nTraining decision tree (criterion: {args.criterion})...")
+        model = DecisionTree.train(train_data, header, criterion=args.criterion, max_depth=args.max_depth, min_samples_split=args.min_samples_split)
+        print("Model training complete.")
+
+        if args.prune > 0.0:
+            print(f"Pruning the tree with min_gain = {args.prune}...")
+            model.prune(min_gain=args.prune, criterion=args.criterion, notify=True)
+            print("Pruning complete.")
+
+        if args.plot:
+            model.export_graph(args.plot)
+
+        print("\nEvaluating model accuracy on the external test set...")
+        accuracy = calculate_accuracy(model, test_data)
+        print(f"\n--- Evaluation Result ---")
+        print(f"Model Accuracy: {accuracy:.2f}%")
+        print("-" * 30)
     else:
-        split_eval(data, args)
+        # --- Case 2: single file, split or k-fold ---
+        # 2. Load the CSV dataset
+        print(f"Loading dataset from: {args.file_path}...")
+        try:
+            header, data = loadCSV(args.file_path)
+        except FileNotFoundError:
+            print(f"Error: The file '{args.file_path}' was not found.")
+            exit()
+        print(f"Dataset loaded successfully with {len(data)} rows.")
+
+        # 3. Choose evaluation method: Cross-Validation or Simple Split
+        if args.k_folds > 1:
+            kfold_eval(data, args)
+        else:
+            split_eval(data, args)
