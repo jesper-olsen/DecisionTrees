@@ -73,7 +73,7 @@ options:
 
 ## Examples
 
-### Simple Split with Pruning and Visualisation
+### 1. Simple Split with Pruning and Visualisation
 
 Train on the Iris dataset using an 80/20 split, apply post-pruning (--prune), and save a visualisation of the
 trained tree.
@@ -106,7 +106,7 @@ Model Accuracy: 93.33%
 | ![Iris Decision Tree](assets/tree_iris.png) |
 | --- |
 
-### 10-Fold Cross Validation on the Wine Quality Dataset
+### 2. 10-Fold Cross Validation on the Wine Quality Dataset
 
 Perform a robust evaluation on the Wine Quality dataset [3], replicating the methodology from the original paper.
 The original paper reported an accuracy of 62% for red wine and 65% for white wine (SVM classifier).
@@ -144,7 +144,7 @@ Standard Deviation: 4.34%
 ==============================
 ```
 
-### Pre-Pruning with a separate Test Set (Adult Dataset)
+### 3. Pre-Pruning with a separate Test Set (Adult Dataset)
 
 Train on the large Adult dataset, which has a pre-defined train/test split and contains missing values. Use
 pre-pruning (`--max_depth` and `--min_samples_split`) to control tree size and prevent overfitting.
