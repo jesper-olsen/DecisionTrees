@@ -3,6 +3,7 @@ import argparse
 from collections import Counter
 from math import log2
 from graphviz import Digraph
+from typing import List, Dict, Optional, Union, Tuple
 
 
 class DecisionTree:
@@ -24,8 +25,13 @@ class DecisionTree:
 
     @classmethod
     def train(
-        cls, data, header, criterion="entropy", max_depth=None, min_samples_split=2
-    ):
+        cls,
+        data: List[List[Union[int, float, str, None]]],
+        header: List[str],
+        criterion: str = "entropy",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+    ) -> "DecisionTree":
         """Trains a decision tree.
 
         Args:
@@ -45,35 +51,33 @@ class DecisionTree:
         if not rows:
             return DecisionNode()
 
-        currentScore = criterion(rows)
+        currentScore = criterion(count_classes(rows))
 
         # Pre-pruning
         summary = {"impurity": currentScore, "samples": len(rows)}
         if (max_depth is not None and depth >= max_depth) or (
             len(rows) < min_samples_split
         ):
-            return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
-
-        if max_depth is not None and depth >= max_depth:
-            return DecisionNode(class_counts=uniqueCounts(rows))
-
-        if len(rows) < min_samples_split:
-            return DecisionNode(class_counts=uniqueCounts(rows))
+            return DecisionNode(class_counts=count_classes(rows), summary=summary)
 
         bestGain = 0.0
         bestAttribute = None
         bestSets = None
 
-        columnCount = len(rows[0]) - 1
-        for col in range(columnCount):
-            columnValues = set(row[col] for row in rows)
-            for value in columnValues:
-                (set1, set2) = divideSet(rows, col, value)
+        column_count = len(rows[0]) - 1
+        for col in range(column_count):
+            column_values = set(row[col] for row in rows)
+            for value in column_values:
+                (set1, set2) = split_set(rows, col, value)
                 if not set1 or not set2:
                     continue
 
                 p = len(set1) / len(rows)
-                gain = currentScore - p * criterion(set1) - (1 - p) * criterion(set2)
+                gain = (
+                    currentScore
+                    - p * criterion(count_classes(set1))
+                    - (1 - p) * criterion(count_classes(set2))
+                )
                 if gain > bestGain:
                     bestGain = gain
                     bestAttribute = (col, value)
@@ -82,21 +86,21 @@ class DecisionTree:
         summary = {"impurity": currentScore, "samples": len(rows)}
 
         if bestGain > 0:
-            trueBranch = DecisionTree._grow_tree(
+            true_branch = DecisionTree._grow_tree(
                 bestSets[0], min_samples_split, max_depth, criterion, depth + 1
             )
-            falseBranch = DecisionTree._grow_tree(
+            false_branch = DecisionTree._grow_tree(
                 bestSets[1], min_samples_split, max_depth, criterion, depth + 1
             )
             return DecisionNode(
                 col=bestAttribute[0],
                 value=bestAttribute[1],
-                trueBranch=trueBranch,
-                falseBranch=falseBranch,
+                true_branch=true_branch,
+                false_branch=false_branch,
                 summary=summary,
             )
         else:
-            return DecisionNode(class_counts=uniqueCounts(rows), summary=summary)
+            return DecisionNode(class_counts=count_classes(rows), summary=summary)
 
     def classify(self, sample, handle_missing=True):
         if handle_missing:
@@ -110,6 +114,8 @@ class DecisionTree:
 
     def export_graph(self, filename):
         """Exports the decision tree to a file using Graphviz with deterministic output."""
+        if not "." in filename:
+            filename += ".png"
         file, ext = filename.rsplit(".", 1)
 
         dot = Digraph()
@@ -162,12 +168,12 @@ class DecisionTree:
             # 3. Recurse for children and create edges to them.
             # The child's ID is returned by the recursive call.
             true_child_id = DecisionTree._export_tree(
-                tree.trueBranch, header, dot, counter
+                tree.true_branch, header, dot, counter
             )
             dot.edge(node_id, true_child_id, label="True")
 
             false_child_id = DecisionTree._export_tree(
-                tree.falseBranch, header, dot, counter
+                tree.false_branch, header, dot, counter
             )
             dot.edge(node_id, false_child_id, label="False")
 
@@ -175,7 +181,7 @@ class DecisionTree:
         return node_id
 
 
-def divideSet(rows, column, value):
+def split_set(rows, column, value):
     """Splits a dataset on a specific column.
 
     Args:
@@ -200,32 +206,28 @@ def divideSet(rows, column, value):
     return set1, set2
 
 
-def uniqueCounts(rows):
+def count_classes(rows):
     """Counts the occurrences of each class in the dataset."""
     # The class label is in the last column
     return Counter(row[-1] for row in rows)
 
 
-def entropy(rows):
-    """Calculates the entropy for a list of rows
-    https://en.wikipedia.org/wiki/Entropy_(information_theory)
-    """
-    if not rows:
+def entropy(counts: Counter) -> float:
+    """Calculates entropy from a Counter object of class counts.
+    https://en.wikipedia.org/wiki/Entropy_(information_theory)"""
+    total = sum(counts.values())
+    if total == 0:
         return 0.0
-    total = len(rows)
-    return -sum(
-        (count / total) * log2(count / total) for count in uniqueCounts(rows).values()
-    )
+    return -sum((c / total) * log2(c / total) for c in counts.values())
 
 
-def gini(rows):
-    """Calculates the Gini impurity for a list of rows.
-    https://en.wikipedia.org/wiki/Decision_tree_learning#Gini_impurity
-    """
-    if not rows:
+def gini(counts: Counter) -> float:
+    """Calculates Gini impurity from a Counter object of class counts.
+    https://en.wikipedia.org/wiki/Decision_tree_learning#Gini_impurity"""
+    total = sum(counts.values())
+    if total == 0:
         return 0.0
-    total = len(rows)
-    return 1.0 - sum((count / total) ** 2 for count in uniqueCounts(rows).values())
+    return 1.0 - sum((c / total) ** 2 for c in counts.values())
 
 
 class DecisionNode:
@@ -234,47 +236,42 @@ class DecisionNode:
         col=None,
         value=None,
         class_counts=None,
-        trueBranch=None,
-        falseBranch=None,
+        true_branch=None,
+        false_branch=None,
         summary=None,
     ):
         self.col = col
         self.value = value
         self.class_counts = class_counts  # only for leaves; None for internal nodes
-        self.trueBranch = trueBranch
-        self.falseBranch = falseBranch
+        self.true_branch = true_branch
+        self.false_branch = false_branch
         self.summary = summary
 
     def __str__(self, headings=None, indent=""):
         if self.class_counts:  # Leaf
-            lsX = sorted(self.class_counts.items())
-            return ", ".join(f"{x}: {y}" for x, y in lsX)
+            sorted_counts = sorted(self.class_counts.items())
+            return ", ".join(f"{x}: {y}" for x, y in sorted_counts)
         else:
-            if headings:
-                szCol = headings[self.col]
-            else:
-                szCol = f"Column {self.col}"
-
-            # szCol = f"Column {self.col}"
-            # if headings and szCol in headings:
-            #     szCol = headings[szCol]
+            column_name = headings[self.col] if headings else f"Column {self.col}"
 
             if isinstance(self.value, (int, float)):
-                decision = f"{szCol} >= {self.value}?"
+                decision = f"{column_name} >= {self.value}?"
             else:
-                decision = f"{szCol} == {self.value}?"
+                decision = f"{column_name} == {self.value}?"
 
-            trueBranchStr = (
-                indent + "yes -> " + self.trueBranch.__str__(headings, indent + "    ")
+            true_branchStr = (
+                indent + "yes -> " + self.true_branch.__str__(headings, indent + "    ")
             )
-            falseBranchStr = (
-                indent + "no  -> " + self.falseBranch.__str__(headings, indent + "    ")
+            false_branchStr = (
+                indent
+                + "no  -> "
+                + self.false_branch.__str__(headings, indent + "    ")
             )
-            return decision + "\n" + trueBranchStr + "\n" + falseBranchStr
+            return decision + "\n" + true_branchStr + "\n" + false_branchStr
 
     def pick_branch(self, v):
         cond = v >= self.value if isinstance(v, (int, float)) else v == self.value
-        return self.trueBranch if cond else self.falseBranch
+        return self.true_branch if cond else self.false_branch
 
     def classify(self, observations):
         """Classifies the observations - assume no missing observations"""
@@ -296,10 +293,15 @@ class DecisionNode:
 
         # Handle missing feature: combine results from both branches,
         # weighted by the number of samples in each branch's subtree.
-        tr = self.trueBranch.classify_with_missing_data(observations)
-        fr = self.falseBranch.classify_with_missing_data(observations)
+        tr = self.true_branch.classify_with_missing_data(observations)
+        fr = self.false_branch.classify_with_missing_data(observations)
         tcount = sum(tr.values())
         fcount = sum(fr.values())
+        total_count = tcount + fcount
+
+        if total_count == 0:
+            return Counter()
+
         tw = tcount / (tcount + fcount)
         fw = fcount / (tcount + fcount)
         keys = tr.keys() | fr.keys()
@@ -308,27 +310,30 @@ class DecisionNode:
     def prune(self, minGain, criterion=entropy, notify=False):
         """Prunes the obtained tree according to the minimal gain (entropy or Gini)."""
         # recursive call for each branch
-        if not self.trueBranch.class_counts:
-            self.trueBranch.prune(minGain, criterion, notify)
-        if not self.falseBranch.class_counts:
-            self.falseBranch.prune(minGain, criterion, notify)
+        if not self.true_branch.class_counts:
+            self.true_branch.prune(minGain, criterion, notify)
+        if not self.false_branch.class_counts:
+            self.false_branch.prune(minGain, criterion, notify)
 
         # merge leaves (potentionally)
-        if self.trueBranch.class_counts and self.falseBranch.class_counts:
-            tb, fb = [], []
-
-            for v, c in self.trueBranch.class_counts.items():
-                tb += [[v]] * c
-            for v, c in self.falseBranch.class_counts.items():
-                fb += [[v]] * c
-
-            p = len(tb) / len(tb + fb)
-            delta = criterion(tb + fb) - p * criterion(tb) - (1 - p) * criterion(fb)
-            if delta < minGain:
+        if self.true_branch.class_counts and self.false_branch.class_counts:
+            true_counts = self.true_branch.class_counts
+            false_counts = self.false_branch.class_counts
+            merged_counts = (
+                self.true_branch.class_counts + self.false_branch.class_counts
+            )
+            merged_impurity = criterion(merged_counts)
+            total_samples = sum(merged_counts.values())
+            p_true = sum(true_counts.values()) / total_samples
+            weighted_child_impurity = p_true * criterion(true_counts) + (
+                1 - p_true
+            ) * criterion(false_counts)
+            gain = merged_impurity - weighted_child_impurity
+            if gain < minGain:
                 if notify:
-                    print("A branch was pruned: gain = %f" % delta)
-                self.trueBranch, self.falseBranch = None, None
-                self.class_counts = uniqueCounts(tb + fb)
+                    print(f"A branch was pruned: gain = {gain:.4f}")
+                self.true_branch, self.false_branch = None, None
+                self.class_counts = merged_counts
 
 
 def print_classification_result(sample, result):
