@@ -60,9 +60,9 @@ class DecisionTree:
         ):
             return DecisionNode(class_counts=count_classes(rows), summary=summary)
 
-        bestGain = 0.0
-        bestAttribute = None
-        bestSets = None
+        best_gain = 0.0
+        best_rule = None
+        best_sets = None
 
         column_count = len(rows[0]) - 1
         for col in range(column_count):
@@ -78,23 +78,23 @@ class DecisionTree:
                     - p * criterion(count_classes(set1))
                     - (1 - p) * criterion(count_classes(set2))
                 )
-                if gain > bestGain:
-                    bestGain = gain
-                    bestAttribute = (col, value)
-                    bestSets = (set1, set2)
+                if gain > best_gain:
+                    best_gain = gain
+                    best_rule = (col, value)
+                    best_sets = (set1, set2)
 
         summary = {"impurity": currentScore, "samples": len(rows)}
 
-        if bestGain > 0:
+        if best_gain > 0:
             true_branch = DecisionTree._grow_tree(
-                bestSets[0], min_samples_split, max_depth, criterion, depth + 1
+                best_sets[0], min_samples_split, max_depth, criterion, depth + 1
             )
             false_branch = DecisionTree._grow_tree(
-                bestSets[1], min_samples_split, max_depth, criterion, depth + 1
+                best_sets[1], min_samples_split, max_depth, criterion, depth + 1
             )
             return DecisionNode(
-                col=bestAttribute[0],
-                value=bestAttribute[1],
+                col=best_rule[0],
+                value=best_rule[1],
                 true_branch=true_branch,
                 false_branch=false_branch,
                 summary=summary,
@@ -206,7 +206,7 @@ def split_set(rows, column, value):
     return set1, set2
 
 
-def count_classes(rows):
+def count_classes(rows) -> Counter:
     """Counts the occurrences of each class in the dataset."""
     # The class label is in the last column
     return Counter(row[-1] for row in rows)
@@ -273,28 +273,28 @@ class DecisionNode:
         cond = v >= self.value if isinstance(v, (int, float)) else v == self.value
         return self.true_branch if cond else self.false_branch
 
-    def classify(self, observations):
-        """Classifies the observations - assume no missing observations"""
+    def classify(self, sample):
+        """Classifies the sample - assume no missing features"""
         if self.class_counts:  # leaf
             return self.class_counts
-        v = observations[self.col]
+        v = sample[self.col]
         branch = self.pick_branch(v)
-        return branch.classify(observations)
+        return branch.classify(sample)
 
-    def classify_with_missing_data(self, observations):
-        """Classifies the observations - may have missing (None) observations"""
+    def classify_with_missing_data(self, sample):
+        """Classifies the sample - may have missing (None) features"""
         if self.class_counts:  # leaf
             return self.class_counts
 
-        v = observations[self.col]
+        v = sample[self.col]
         if v is not None:
             branch = self.pick_branch(v)
-            return branch.classify_with_missing_data(observations)
+            return branch.classify_with_missing_data(sample)
 
         # Handle missing feature: combine results from both branches,
         # weighted by the number of samples in each branch's subtree.
-        tr = self.true_branch.classify_with_missing_data(observations)
-        fr = self.false_branch.classify_with_missing_data(observations)
+        tr = self.true_branch.classify_with_missing_data(sample)
+        fr = self.false_branch.classify_with_missing_data(sample)
         tcount = sum(tr.values())
         fcount = sum(fr.values())
         total_count = tcount + fcount
@@ -302,8 +302,8 @@ class DecisionNode:
         if total_count == 0:
             return Counter()
 
-        tw = tcount / (tcount + fcount)
-        fw = fcount / (tcount + fcount)
+        tw = tcount / total_count
+        fw = fcount / total_count
         keys = tr.keys() | fr.keys()
         return Counter({k: tr.get(k, 0) * tw + fr.get(k, 0) * fw for k in keys})
 
@@ -319,16 +319,14 @@ class DecisionNode:
         if self.true_branch.class_counts and self.false_branch.class_counts:
             true_counts = self.true_branch.class_counts
             false_counts = self.false_branch.class_counts
-            merged_counts = (
-                self.true_branch.class_counts + self.false_branch.class_counts
-            )
+            merged_counts = true_counts + false_counts
             merged_impurity = criterion(merged_counts)
             total_samples = sum(merged_counts.values())
             p_true = sum(true_counts.values()) / total_samples
-            weighted_child_impurity = p_true * criterion(true_counts) + (
-                1 - p_true
-            ) * criterion(false_counts)
-            gain = merged_impurity - weighted_child_impurity
+            child_impurity = p_true * criterion(true_counts) + (1 - p_true) * criterion(
+                false_counts
+            )
+            gain = merged_impurity - child_impurity
             if gain < minGain:
                 if notify:
                     print(f"A branch was pruned: gain = {gain:.4f}")
