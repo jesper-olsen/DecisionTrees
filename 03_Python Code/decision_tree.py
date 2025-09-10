@@ -16,12 +16,10 @@ class DecisionTree:
 
     @staticmethod
     def _eval_fn(criterion):
-        if criterion == "entropy":
-            return entropy
-        elif criterion == "gini":
-            return gini
-        else:
-            raise ValueError(f"Unknown criterion: {criterion}")
+        match criterion:
+            case "entropy": return entropy
+            case "gini": return gini
+            case _: raise ValueError(f"Unknown criterion: {criterion}")
 
     @classmethod
     def train(
@@ -378,6 +376,45 @@ def loadCSV(file):
         data = [[convertTypes(item) for item in row] for row in reader]
         return header, data
 
+def small_example(args):
+    header, trainingdata = loadCSV("data/tbc.csv")
+    dt = DecisionTree.train(trainingdata, header, criterion=args.criterion)
+    print(dt)
+
+    print("\n--- Classification Examples ---")
+
+    # Example 1: A sample with complete data
+    complete_sample = ["ohne", "leicht", "Streifen", "normal", "normal"]
+    result1 = dt.classify(complete_sample, handle_missing=False)
+    print_classification_result(complete_sample, result1)
+
+    missing_sample = [None, "leicht", None, "Flocken", "fiepend"]
+    result2 = dt.classify(missing_sample, handle_missing=True)
+    print_classification_result(missing_sample, result2)  # no longer unique
+    # Don't forget if you compare the resulting tree with the tree in my presentation: here it is a binary tree!
+    if args.plot: dt.export_graph(args.plot)
+
+def bigger_example(args):
+    header, trainingdata = loadCSV("data/fishiris.csv")  # demo data from matlab
+    dt = DecisionTree.train(trainingdata, header, criterion=args.criterion)
+    print(dt)
+    # notify, when a branch is pruned (one time in this example)
+    dt.prune(0.5, criterion=args.criterion, notify=True)
+    print(dt)
+
+    print("\n--- Classification Examples ---")
+
+    # Example 1: A sample with complete data
+    complete_sample = [6.0, 2.2, 5.0, 1.5]
+    result1 = dt.classify(complete_sample, handle_missing=False)
+    print_classification_result(complete_sample, result1)
+
+    # Example 2: A sample with missing data
+    missing_sample = [None, None, None, 1.5]
+    result2 = dt.classify(missing_sample, handle_missing=True)
+    print_classification_result(missing_sample, result2)  # no longer unique
+    if args.plot: dt.export_graph(args.plot)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Decision tree demo")
@@ -403,53 +440,13 @@ if __name__ == "__main__":
     # All examples do the following steps:
     #     1. Load training data
     #     2. Let the decision tree grow
-    #     4. Plot the decision tree
+    #     4. Print the decision tree
     #     5. Classify without missing data
     #     6. Classify with missing data
     #     (7.) Prune the decision tree according to a minimal gain level
     #     (8.) Plot the pruned tree
 
-    decisionTree = None
-    header = None
-    trainingData = None
-
-    if args.example == 1:
-        # the smaller example
-        header, trainingData = loadCSV("data/tbc.csv")
-        dt = DecisionTree.train(trainingData, header, criterion=args.criterion)
-        print(dt)
-
-        print("\n--- Classification Examples ---")
-
-        # Example 1: A sample with complete data
-        complete_sample = ["ohne", "leicht", "Streifen", "normal", "normal"]
-        result1 = dt.classify(complete_sample, handle_missing=False)
-        print_classification_result(complete_sample, result1)
-
-        missing_sample = [None, "leicht", None, "Flocken", "fiepend"]
-        result2 = dt.classify(missing_sample, handle_missing=True)
-        print_classification_result(missing_sample, result2)  # no longer unique
-        # Don't forget if you compare the resulting tree with the tree in my presentation: here it is a binary tree!
-    else:
-        # the bigger example
-        header, trainingData = loadCSV("data/fishiris.csv")  # demo data from matlab
-        dt = DecisionTree.train(trainingData, header, criterion=args.criterion)
-        print(dt)
-        # notify, when a branch is pruned (one time in this example)
-        dt.prune(0.5, criterion=args.criterion, notify=True)
-        print(dt)
-
-        print("\n--- Classification Examples ---")
-
-        # Example 1: A sample with complete data
-        complete_sample = [6.0, 2.2, 5.0, 1.5]
-        result1 = dt.classify(complete_sample, handle_missing=False)
-        print_classification_result(complete_sample, result1)
-
-        # Example 2: A sample with missing data
-        missing_sample = [None, None, None, 1.5]
-        result2 = dt.classify(missing_sample, handle_missing=True)
-        print_classification_result(missing_sample, result2)  # no longer unique
-
-    if args.plot:
-        dt.export_graph(args.plot)
+    match args.example:
+        case 1: small_example(args)
+        case 2: bigger_example(args)
+        case _: print("Invalid example - should be 1 or 2")
