@@ -87,10 +87,12 @@ def kfold_eval(data, args):
 
         # Train the model for this fold
         model = DecisionTree.train(train_data, header, criterion=args.criterion, max_depth=args.max_depth, min_samples_split=args.min_samples_split)
+        print(f"Trained a model with {model.size()} nodes")
 
         # Prune if requested
         if args.prune > 0.0:
             model.prune(min_gain=args.prune, criterion=args.criterion)
+            print(f"Pruned model down to {model.size()} nodes")
 
         # Evaluate and store accuracy
         accuracy = calculate_accuracy(model, test_data)
@@ -119,12 +121,12 @@ def split_eval(data, args):
 
     print(f"Training the decision tree model (criterion: {args.criterion})...")
     model = DecisionTree.train(train_data, header, criterion=args.criterion, max_depth=args.max_depth, min_samples_split=args.min_samples_split)
-    print("Model training complete.")
+    print(f"Trained a model with {model.size()} nodes")
 
     if args.prune > 0.0:
         print(f"Pruning the tree with min_gain = {args.prune}...")
         model.prune(min_gain=args.prune, criterion=args.criterion, notify=True)
-        print("Pruning complete.")
+        print(f"Pruned down to {model.size()} nodes")
     else:
         print("No pruning requested.")
 
@@ -201,7 +203,7 @@ if __name__ == "__main__":
         # train
         print(f"\nTraining decision tree (criterion: {args.criterion})...")
         model = DecisionTree.train(train_data, header, criterion=args.criterion, max_depth=args.max_depth, min_samples_split=args.min_samples_split)
-        print("Model training complete.")
+        print(f"Trained a model with {model.size()} nodes")
 
         if args.prune > 0.0:
             print(f"Pruning the tree with min_gain = {args.prune}...")

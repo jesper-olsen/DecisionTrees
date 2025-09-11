@@ -15,6 +15,9 @@ class DecisionTree:
     def __str__(self, indent=""):
         return self.root_node.__str__(headings=self.header, indent=indent)
 
+    def size(self):
+        return self.root_node.size()
+
     @staticmethod
     def _eval_fn(criterion):
         match criterion:
@@ -268,6 +271,12 @@ class DecisionNode:
             )
             return decision + "\n" + true_branchStr + "\n" + false_branchStr
 
+    def size(self) -> int: 
+        """return number of nodes in the tree"""
+        if self.class_counts:
+            return 1
+        return self.true_branch.size() + self.false_branch.size() + 1
+
     def pick_branch(self, v):
         cond = v >= self.value if isinstance(v, (int, float)) else v == self.value
         return self.true_branch if cond else self.false_branch
@@ -378,7 +387,7 @@ def load_csv(fname: str) -> Tuple[List[str],List[Sample]]:
         return header, data
 
 def small_example(args):
-    header, trainingdata = loadCSV("data/tbc.csv")
+    header, trainingdata = load_csv("data/tbc.csv")
     dt = DecisionTree.train(trainingdata, header, criterion=args.criterion)
     print(dt)
 
