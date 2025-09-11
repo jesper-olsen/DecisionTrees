@@ -1,7 +1,7 @@
 import random
 import argparse
 from statistics import mean, stdev  # Import mean and stdev for final summary
-from decision_tree import DecisionTree, loadCSV
+from decision_tree import DecisionTree, load_csv
 
 
 def create_folds(data, k):
@@ -191,11 +191,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.test_file:
         print(f"Loading training dataset from: {args.file_path}...")
-        header, train_data = loadCSV(args.file_path)
+        header, train_data = load_csv(args.file_path)
         print(f"Training set: {len(train_data)} rows")
 
         print(f"Loading test dataset from: {args.test_file}...")
-        test_header, test_data = loadCSV(args.test_file)
+        test_header, test_data = load_csv(args.test_file)
         print(f"Test set: {len(test_data)} rows")
 
         # train
@@ -221,7 +221,7 @@ if __name__ == "__main__":
         # 2. Load the CSV dataset
         print(f"Loading dataset from: {args.file_path}...")
         try:
-            header, data = loadCSV(args.file_path)
+            header, data = load_csv(args.file_path)
         except FileNotFoundError:
             print(f"Error: The file '{args.file_path}' was not found.")
             exit()

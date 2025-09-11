@@ -5,9 +5,10 @@ from math import log2
 from graphviz import Digraph
 from typing import List, Dict, Optional, Union, Tuple
 
+type Sample = List[Union[int, float, str, None]]
 
 class DecisionTree:
-    def __init__(self, root_node, header):
+    def __init__(self, root_node: 'DecisionNode', header: List[str]):
         self.root_node = root_node
         self.header = header
 
@@ -24,7 +25,7 @@ class DecisionTree:
     @classmethod
     def train(
         cls,
-        data: List[List[Union[int, float, str, None]]],
+        data: List[Sample],
         header: List[str],
         criterion: str = "entropy",
         max_depth: Optional[int] = None,
@@ -100,7 +101,7 @@ class DecisionTree:
         else:
             return DecisionNode(class_counts=count_classes(rows), summary=summary)
 
-    def classify(self, sample, handle_missing=True):
+    def classify(self, sample: Sample, handle_missing=True):
         if handle_missing:
             return self.root_node.classify_with_missing_data(sample)
         else:
@@ -271,7 +272,7 @@ class DecisionNode:
         cond = v >= self.value if isinstance(v, (int, float)) else v == self.value
         return self.true_branch if cond else self.false_branch
 
-    def classify(self, sample):
+    def classify(self, sample: Sample):
         """Classifies the sample - assume no missing features"""
         if self.class_counts:  # leaf
             return self.class_counts
@@ -279,7 +280,7 @@ class DecisionNode:
         branch = self.pick_branch(v)
         return branch.classify(sample)
 
-    def classify_with_missing_data(self, sample):
+    def classify_with_missing_data(self, sample: Sample):
         """Classifies the sample - may have missing (None) features"""
         if self.class_counts:  # leaf
             return self.class_counts
@@ -358,7 +359,7 @@ def print_classification_result(sample, result):
     print("-" * 40)
 
 
-def loadCSV(file):
+def load_csv(fname: str) -> Tuple[List[str],List[Sample]]:
     """Loads a CSV file, reads the header, and converts data types."""
 
     def convertTypes(s):
@@ -370,7 +371,7 @@ def loadCSV(file):
         except ValueError:
             return s
 
-    with open(file, "rt") as f:
+    with open(fname, "rt") as f:
         reader = csv.reader(f)
         header = next(reader)  # Read the first line as the header
         data = [[convertTypes(item) for item in row] for row in reader]
@@ -395,7 +396,7 @@ def small_example(args):
     if args.plot: dt.export_graph(args.plot)
 
 def bigger_example(args):
-    header, trainingdata = loadCSV("data/fishiris.csv")  # demo data from matlab
+    header, trainingdata = load_csv("data/fishiris.csv")  # demo data from matlab
     dt = DecisionTree.train(trainingdata, header, criterion=args.criterion)
     print(dt)
     # notify, when a branch is pruned (one time in this example)
@@ -440,7 +441,7 @@ if __name__ == "__main__":
     # All examples do the following steps:
     #     1. Load training data
     #     2. Let the decision tree grow
-    #     4. Print the decision tree
+    #     4. Print the decision tree to stdout
     #     5. Classify without missing data
     #     6. Classify with missing data
     #     (7.) Prune the decision tree according to a minimal gain level
